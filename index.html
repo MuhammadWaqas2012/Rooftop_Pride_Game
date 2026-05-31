@@ -1,0 +1,1533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Rooftop Pride Run 🏳️‍🌈</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; overflow:hidden; font-family:'Segoe UI',sans-serif; }
+#canvas-container { width:100vw; height:100vh; }
+
+#hud { position:fixed; top:0; left:0; right:0; pointer-events:none; z-index:10; }
+#top-bar {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:16px 24px;
+  background:linear-gradient(to bottom,rgba(0,0,0,.65),transparent);
+}
+.hud-pill {
+  background:rgba(255,255,255,.13); backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,.22); border-radius:100px;
+  padding:8px 20px; color:#fff; font-size:1rem; font-weight:600;
+  letter-spacing:.04em; text-shadow:0 1px 4px rgba(0,0,0,.5);
+}
+#timer-pill.urgent { color:#ff6b6b; animation:pulse .6s infinite alternate; }
+@keyframes pulse { to { opacity:.45; } }
+#flags-pill { color:#a8e6cf; }
+
+#crosshair {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  pointer-events:none; z-index:10; width:24px; height:24px;
+}
+#crosshair::before,#crosshair::after {
+  content:''; position:absolute; background:rgba(255,255,255,.85); border-radius:2px;
+}
+#crosshair::before { width:2px; height:100%; left:50%; transform:translateX(-50%); }
+#crosshair::after  { width:100%; height:2px; top:50%; transform:translateY(-50%); }
+
+#prompt {
+  position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
+  background:rgba(0,0,0,.72); border:1px solid rgba(255,255,255,.25);
+  border-radius:12px; color:#fff; padding:10px 24px;
+  font-size:.95rem; font-weight:600; pointer-events:none; z-index:10;
+  display:none; letter-spacing:.05em; text-shadow:0 0 8px rgba(255,200,100,.7);
+}
+#controls-legend {
+  position:fixed; bottom:20px; left:24px; color:rgba(255,255,255,.42);
+  font-size:.74rem; line-height:1.75; pointer-events:none; z-index:10;
+}
+#music-btn {
+  position:fixed; bottom:20px; right:24px; z-index:10;
+  background:rgba(255,255,255,.13); backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,.22); border-radius:100px;
+  padding:7px 18px; color:#fff; font-size:.78rem; font-weight:600;
+  cursor:pointer; letter-spacing:.04em; transition:background .2s;
+}
+#music-btn:hover { background:rgba(255,255,255,.22); }
+
+.overlay {
+  position:fixed; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; z-index:20; pointer-events:all;
+}
+#start-screen { background:radial-gradient(ellipse at 50% 60%,#1a0a3a 0%,#080412 100%); }
+
+.pride-title {
+  font-size:clamp(2rem,6vw,4.5rem); font-weight:900; letter-spacing:-.02em; margin-bottom:.2em;
+  background:linear-gradient(90deg,#ff6b6b 0%,#ffd93d 20%,#6bcb77 40%,#4d96ff 60%,#c77dff 80%,#ff6b6b 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  background-size:200%; animation:rainbow-slide 3s linear infinite;
+}
+@keyframes rainbow-slide { to { background-position:200%; } }
+.subtitle { color:rgba(255,255,255,.58); font-size:1.05rem; margin-bottom:2.5rem; letter-spacing:.08em; text-transform:uppercase; }
+.objective-card {
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12);
+  border-radius:16px; padding:20px 32px; color:rgba(255,255,255,.8);
+  font-size:.9rem; line-height:1.8; margin-bottom:2.5rem; max-width:440px; text-align:center;
+}
+.objective-card strong { color:#ffd93d; }
+.start-btn {
+  background:linear-gradient(135deg,#ff6b6b,#c77dff); border:none;
+  border-radius:100px; padding:16px 48px; color:#fff;
+  font-size:1.1rem; font-weight:700; letter-spacing:.08em; cursor:pointer;
+  transition:transform .15s,box-shadow .15s; box-shadow:0 0 40px rgba(199,125,255,.4);
+}
+.start-btn:hover { transform:scale(1.06); box-shadow:0 0 60px rgba(199,125,255,.6); }
+#win-screen  { background:radial-gradient(ellipse at 50% 50%,#0a2a1a,#050d0a); display:none; }
+#lose-screen { background:radial-gradient(ellipse at 50% 50%,#2a0a0a,#0d0505); display:none; }
+.result-emoji { font-size:5rem; margin-bottom:.3em; }
+.result-title { font-size:clamp(2rem,6vw,4rem); font-weight:900; color:#fff; margin-bottom:.4em; }
+#win-screen  .result-title { color:#6bcb77; text-shadow:0 0 40px #6bcb7799; }
+#lose-screen .result-title { color:#ff6b6b; text-shadow:0 0 40px #ff6b6b99; }
+.result-sub { color:rgba(255,255,255,.55); font-size:1rem; margin-bottom:2rem; }
+
+/* Loose-plank warning flash */
+#plank-warn {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  color:#ffdd44; font-size:1.1rem; font-weight:700;
+  text-shadow:0 0 12px rgba(255,200,0,.8);
+  pointer-events:none; z-index:10; display:none; letter-spacing:.06em;
+}
+</style>
+</head>
+<body>
+
+<!-- OVERLAYS -->
+<div class="overlay" id="start-screen">
+  <div class="pride-title">Rooftop Pride Run</div>
+  <div class="subtitle">🏳️‍🌈 Plant the flags. Beat the clock.</div>
+  <div class="objective-card">
+    You're on the rooftops of a cosy neighbourhood.<br>
+    Plant <strong>3 Pride flags</strong> across three buildings before the <strong>60-second</strong> timer runs out.<br><br>
+    🏃 <strong>WASD</strong> — Move &nbsp;|&nbsp; 🖱️ <strong>Mouse</strong> — Look<br>
+    ⬆️ <strong>Space</strong> — Jump &nbsp;|&nbsp; 🚩 <strong>E</strong> — Plant flag<br><br>
+    ⚠️ <em>Watch out for the <strong>loose plank</strong> between rooftops 2 &amp; 3!</em>
+  </div>
+  <button class="start-btn" id="start-btn">CLICK TO START</button>
+</div>
+<div class="overlay" id="win-screen">
+  <div class="result-emoji">🎉</div>
+  <div class="result-title">You Win!</div>
+  <div class="result-sub">The whole neighbourhood is flying the flag! 🏳️‍🌈</div>
+  <button class="start-btn" id="win-restart-btn">Play Again</button>
+</div>
+<div class="overlay" id="lose-screen">
+  <div class="result-emoji">⏰</div>
+  <div class="result-title">Time's Up!</div>
+  <div class="result-sub">So close! Try again — you've got this.</div>
+  <button class="start-btn" id="lose-restart-btn">Try Again</button>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="top-bar">
+    <div class="hud-pill" id="flags-pill">🚩 Flags: <span id="flag-count">0</span>/3</div>
+    <div class="hud-pill" id="timer-pill">⏱ <span id="timer-display">60</span>s</div>
+  </div>
+</div>
+<div id="crosshair"></div>
+<div id="prompt">Press E to plant flag 🚩</div>
+<div id="plank-warn">⚠️ LOOSE PLANK!</div>
+<div id="controls-legend">
+  WASD — Move &nbsp;|&nbsp; Mouse — Look &nbsp;|&nbsp; Space — Jump &nbsp;|&nbsp; E — Plant flag
+</div>
+<button id="music-btn">🎵 Music: ON</button>
+
+<div id="canvas-container"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 1 — RENDERER & SCENE
+// ═══════════════════════════════════════════════════════════
+
+const container = document.getElementById('canvas-container');
+const renderer  = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x7ec8e3);
+scene.fog = new THREE.Fog(0x9cd4e8, 60, 170);
+
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 220);
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xfff0d0, 0.65));
+const sun = new THREE.DirectionalLight(0xfff3c0, 1.3);
+sun.position.set(30,60,20); sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera,{near:1,far:220,left:-90,right:90,top:90,bottom:-90});
+sun.shadow.bias=-0.001;
+scene.add(sun);
+const fill=new THREE.DirectionalLight(0xc0d8ff,0.28);
+fill.position.set(-20,15,-10); scene.add(fill);
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 2 — GEOMETRY HELPERS
+// ═══════════════════════════════════════════════════════════
+
+function box(w,h,d,color,x,y,z,extra={}){
+  const m=new THREE.Mesh(
+    new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshLambertMaterial({color,...extra})
+  );
+  m.position.set(x,y,z); m.castShadow=m.receiveShadow=true;
+  scene.add(m); return m;
+}
+function cyl(rt,rb,h,seg,color,x,y,z){
+  const m=new THREE.Mesh(
+    new THREE.CylinderGeometry(rt,rb,h,seg),
+    new THREE.MeshLambertMaterial({color})
+  );
+  m.position.set(x,y,z); m.castShadow=m.receiveShadow=true;
+  scene.add(m); return m;
+}
+function cone(r,h,seg,color,x,y,z,ry=0){
+  const m=new THREE.Mesh(
+    new THREE.ConeGeometry(r,h,seg),
+    new THREE.MeshLambertMaterial({color})
+  );
+  m.position.set(x,y,z); m.rotation.y=ry; m.castShadow=true;
+  scene.add(m); return m;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 3 — COLLISION SYSTEM
+//  We maintain a list of AABB volumes.
+//  Each entry: { minX,maxX, minY,maxY, minZ,maxZ }
+//  The player is a capsule approximated as a thin AABB
+//  with radius=0.38. Collision resolves axes separately.
+// ═══════════════════════════════════════════════════════════
+
+const colliders = [];      // all solid AABB boxes
+const platforms = [];      // walkable top-surfaces (subset)
+
+const PLAYER_R  = 0.38;   // horizontal half-width
+const PLAYER_H  = 1.72;   // eye height
+
+// Register a collidable box. topWalkable = true adds it to platforms too.
+// isGround = true means touching its top surface triggers respawn instead of landing.
+function addCollider(cx, cy, cz, w, h, d, topWalkable=false, isGround=false){
+  const c = {
+    minX: cx-w/2, maxX: cx+w/2,
+    minY: cy-h/2, maxY: cy+h/2,
+    minZ: cz-d/2, maxZ: cz+d/2,
+    isGround,
+  };
+  colliders.push(c);
+  if(topWalkable && !isGround) platforms.push(c);
+  return c;
+}
+
+// Resolve player AABB against all colliders.
+// Returns { onGround, groundY, hitGroundPlane }
+// hitGroundPlane=true means the player touched the street-level ground → respawn.
+function resolveCollisions(pos, vel){
+  // Player feet at pos.y - PLAYER_H, top at pos.y
+  // Horizontal footprint: PLAYER_R square
+  const px=pos.x, py=pos.y, pz=pos.z;
+  let onGround=false, groundY=-Infinity, hitGroundPlane=false;
+
+  for(const c of colliders){
+    // Broad-phase: skip if clearly far
+    if(px+PLAYER_R < c.minX-0.01 || px-PLAYER_R > c.maxX+0.01) continue;
+    if(pz+PLAYER_R < c.minZ-0.01 || pz-PLAYER_R > c.maxZ+0.01) continue;
+    if(py          < c.minY-0.01 || py-PLAYER_H > c.maxY+0.01) continue;
+
+    // Overlap amounts on each axis
+    const overlapX1 = (px+PLAYER_R) - c.minX;
+    const overlapX2 = c.maxX - (px-PLAYER_R);
+    const overlapY1 = py           - c.minY; // head into floor from above
+    const overlapY2 = c.maxY - (py-PLAYER_H); // feet into ceiling from below
+    const overlapZ1 = (pz+PLAYER_R) - c.minZ;
+    const overlapZ2 = c.maxZ - (pz-PLAYER_R);
+
+    const ox = Math.min(overlapX1, overlapX2);
+    const oy = Math.min(overlapY1, overlapY2);
+    const oz = Math.min(overlapZ1, overlapZ2);
+
+    if(ox<=0||oy<=0||oz<=0) continue; // no real overlap
+
+    // Ground-plane collider: touching its top → respawn, don't resolve normally
+    if(c.isGround && oy < ox && oy < oz && overlapY2 < overlapY1){
+      hitGroundPlane = true;
+      continue; // skip physics resolution — respawn handles it
+    }
+
+    // Push along smallest penetration axis
+    if(oy < ox && oy < oz){
+      // Vertical collision
+      if(overlapY2 < overlapY1){
+        // feet were inside top of box → land on top
+        pos.y = c.maxY + PLAYER_H;
+        if(vel.y < 0){ vel.y = 0; }
+        onGround = true;
+        groundY  = Math.max(groundY, c.maxY);
+      } else {
+        // head hit ceiling
+        pos.y = c.minY;
+        if(vel.y > 0) vel.y = 0;
+      }
+    } else if(ox < oz){
+      // X push-out
+      if(overlapX1 < overlapX2) pos.x = c.minX - PLAYER_R;
+      else                       pos.x = c.maxX + PLAYER_R;
+      vel.x = 0;
+    } else {
+      // Z push-out
+      if(overlapZ1 < overlapZ2) pos.z = c.minZ - PLAYER_R;
+      else                       pos.z = c.maxZ + PLAYER_R;
+      vel.z = 0;
+    }
+  }
+  return { onGround, groundY, hitGroundPlane };
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 4 — WORLD GEOMETRY + COLLIDERS
+// ═══════════════════════════════════════════════════════════
+
+const GROUND_Y      = -8.0;
+const ROOFTOP_GRAY  = 0x909090;
+const ACCENT_COLORS = [0xff6b6b,0x6bcb77,0x4d96ff];
+
+const rooftopDefs = [
+  {w:14,h:1,d:14,x:0,roofY:0,   buildH:8.5},
+  {w:12,h:1,d:12,x:0,roofY:1.5, buildH:10.0},
+  {w:10,h:1,d:10,x:0,roofY:-0.5,buildH:8.0},
+];
+const rooftopZs   = [0, 24, 46];
+const rooftopTopY = rooftopDefs.map(r=>r.roofY+r.h/2);
+const rooftopMeshes = [];
+
+const wallColors=[0xe0cdb5,0xd4b896,0xcfc3b0];
+const trimColors=[0xb09070,0xc09878,0xa89070];
+
+rooftopDefs.forEach((r,i)=>{
+  const z=rooftopZs[i], wc=wallColors[i], tc=trimColors[i];
+
+  // Roof slab — visual + collider (walkable top)
+  const slab=box(r.w,r.h,r.d,ROOFTOP_GRAY,r.x,r.roofY,z);
+  rooftopMeshes.push(slab);
+  addCollider(r.x,r.roofY,z, r.w,r.h,r.d, true);
+
+  // Building body — visual + solid side collider
+  const bodyH=r.roofY-r.h/2-GROUND_Y;
+  const bodyY=GROUND_Y+bodyH/2;
+  box(r.w,bodyH,r.d,wc,r.x,bodyY,z);
+  addCollider(r.x,bodyY,z, r.w,bodyH,r.d, false);
+
+  // Window rows (visual only, no collider)
+  const winRows=Math.max(2,Math.floor(bodyH/2.6));
+  for(let row=0;row<winRows;row++){
+    const wy=GROUND_Y+1.8+row*2.5;
+    [-1,0,1].forEach(col=>{
+      const wx=r.x+col*(r.w/3.5);
+      box(1.2,0.95,0.18,0xaad4f5,wx,wy,z-r.d/2-0.06);
+      box(1.2,0.95,0.18,0xaad4f5,wx,wy,z+r.d/2+0.06);
+      box(0.18,0.95,1.2,0xaad4f5,r.x-r.w/2-0.06,wy,z+col*(r.d/3.5));
+      box(0.18,0.95,1.2,0xaad4f5,r.x+r.w/2+0.06,wy,z+col*(r.d/3.5));
+    });
+  }
+
+  // Door
+  box(1.9,2.5,0.18,0x4a2e10,r.x,GROUND_Y+1.25,z-r.d/2-0.07);
+  box(2.2,2.8,0.12,tc,r.x,GROUND_Y+1.4,z-r.d/2-0.05);
+
+  // Cornice
+  box(r.w+0.3,0.3,r.d+0.3,tc,r.x,r.roofY-r.h/2+0.15,z);
+
+  // Parapet walls — visual + solid colliders
+  const ph=0.65,pw=0.32;
+  const parapets=[
+    [r.w+pw,ph,pw, r.x,rooftopTopY[i]+ph/2,z-r.d/2],
+    [r.w+pw,ph,pw, r.x,rooftopTopY[i]+ph/2,z+r.d/2],
+    [pw,ph,r.d,    r.x-r.w/2,rooftopTopY[i]+ph/2,z],
+    [pw,ph,r.d,    r.x+r.w/2,rooftopTopY[i]+ph/2,z],
+  ];
+  parapets.forEach(([w2,h2,d2,cx2,cy2,cz2])=>{
+    box(w2,h2,d2,0x888888,cx2,cy2,cz2);
+    addCollider(cx2,cy2,cz2,w2,h2,d2,false);
+  });
+
+  // Chimney
+  const chH=1.8;
+  const chX=r.x+r.w/2-1.8, chZ=z-r.d/2+1.8;
+  box(0.75,chH,0.75,0xb87333,chX,rooftopTopY[i]+chH/2,chZ);
+  box(1.0,0.25,1.0,0x8b5e3c,chX,rooftopTopY[i]+chH+0.12,chZ);
+  addCollider(chX,rooftopTopY[i]+chH/2,chZ, 0.75,chH,0.75, false);
+
+  // AC unit — visual + collider
+  const acX=r.x-2, acY=rooftopTopY[i]+0.425, acZ=z+1.5;
+  box(1.5,0.85,1.0,0x777777,acX,acY,acZ);
+  addCollider(acX,acY,acZ,1.5,0.85,1.0,false);
+  box(0.6,0.5,0.6,0x666666,r.x+2,rooftopTopY[i]+0.25,z-2.5);
+  cyl(0.15,0.15,0.6,6,0x555555,acX,rooftopTopY[i]+1.15,acZ);
+});
+
+// ── Plank bridge A → B (solid, walkable) ──
+box(1.1,0.12,8.5,0x8b5e3c,0,0.81,12.25);
+addCollider(0,0.81,12.25, 1.1,0.12,8.5, true);
+box(0.05,0.05,8.5,0xaa8855,-0.5,1.2,12.25);
+box(0.05,0.05,8.5,0xaa8855, 0.5,1.2,12.25);
+
+// ── Far ledge on B (jump gap B→C) ──
+box(12,0.22,0.75,0x888888,0,2.11,30.4);
+addCollider(0,2.11,30.4, 12,0.22,0.75, true);
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 5 — LOOSE PLANK (B → C, wobbly & dangerous)
+// ═══════════════════════════════════════════════════════════
+
+// The loose plank bridges buildings B (roofTop≈2.0) to C (roofTop≈0.0)
+// It sits in the gap between z=30.8 and z=39 (rough gap).
+// It wobbles and tilts — if you stand on it it drops you.
+
+const LOOSE_PLANK_CX = 0;
+const LOOSE_PLANK_CZ = 35.2;      // centre of the gap
+const LOOSE_PLANK_LEN= 8.5;
+const LOOSE_PLANK_W  = 1.0;
+const LOOSE_PLANK_H  = 0.14;
+// Height is the average between B roof and C roof
+const LOOSE_PLANK_BASE_Y = (rooftopTopY[1] + rooftopTopY[2]) / 2 + 0.07; // ≈ 1.1
+
+// We store the plank mesh and its dynamic angle/drop state
+const loosePlankState = {
+  mesh:       null,
+  collider:   null,
+  angle:      0,          // current tilt angle (radians around X axis)
+  dropTime:   0,          // how long player has been on it
+  dropped:    false,      // once dropped → plank falls away
+  resetTimer: 0,          // countdown before plank resets
+  baseY:      LOOSE_PLANK_BASE_Y,
+  curY:       LOOSE_PLANK_BASE_Y,
+  wobble:     0,
+};
+
+function buildLoosePlank(){
+  // Remove old mesh if exists
+  if(loosePlankState.mesh) scene.remove(loosePlankState.mesh);
+
+  const geo = new THREE.BoxGeometry(LOOSE_PLANK_W, LOOSE_PLANK_H, LOOSE_PLANK_LEN);
+  // Give each plank board a slightly different colour for texture feel
+  const mat = new THREE.MeshLambertMaterial({ color:0x9b6c3e });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow=mesh.receiveShadow=true;
+
+  // Add some "nails" / grain strips
+  for(let i=-3;i<=3;i++){
+    const strip=new THREE.Mesh(
+      new THREE.BoxGeometry(LOOSE_PLANK_W+0.02,0.02,0.08),
+      new THREE.MeshLambertMaterial({color:0x7a4e28})
+    );
+    strip.position.set(0,LOOSE_PLANK_H/2+0.01,i*1.1);
+    mesh.add(strip);
+  }
+
+  mesh.position.set(LOOSE_PLANK_CX, LOOSE_PLANK_BASE_Y, LOOSE_PLANK_CZ);
+  scene.add(mesh);
+  loosePlankState.mesh   = mesh;
+  loosePlankState.angle  = 0;
+  loosePlankState.dropTime=0;
+  loosePlankState.dropped=false;
+  loosePlankState.resetTimer=0;
+  loosePlankState.curY   = LOOSE_PLANK_BASE_Y;
+
+  // Dynamic collider — we'll update it manually every frame
+  // (We add it to colliders once, then mutate its bounds)
+  if(!loosePlankState.collider){
+    const c={minX:0,maxX:0,minY:0,maxY:0,minZ:0,maxZ:0,isLoose:true};
+    colliders.push(c);
+    loosePlankState.collider=c;
+  }
+  updateLoosePlankCollider();
+}
+
+function updateLoosePlankCollider(){
+  const c  = loosePlankState.collider;
+  const cy = loosePlankState.curY;
+  c.minX = LOOSE_PLANK_CX - LOOSE_PLANK_W/2;
+  c.maxX = LOOSE_PLANK_CX + LOOSE_PLANK_W/2;
+  c.minY = cy - LOOSE_PLANK_H/2 - 0.01;
+  c.maxY = cy + LOOSE_PLANK_H/2;
+  c.minZ = LOOSE_PLANK_CZ - LOOSE_PLANK_LEN/2;
+  c.maxZ = LOOSE_PLANK_CZ + LOOSE_PLANK_LEN/2;
+}
+
+function updateLoosePlank(dt, t, playerOnPlank){
+  const lp = loosePlankState;
+
+  if(lp.dropped){
+    // Plank falls
+    lp.curY -= 6 * dt;
+    lp.angle += 2.5 * dt;
+    if(lp.mesh){ lp.mesh.position.y = lp.curY; lp.mesh.rotation.x = lp.angle; }
+    updateLoosePlankCollider();
+
+    // Reset after 3 s
+    lp.resetTimer += dt;
+    if(lp.resetTimer > 3.0){
+      lp.dropped   = false;
+      lp.curY      = lp.baseY;
+      lp.angle     = 0;
+      lp.dropTime  = 0;
+      lp.resetTimer= 0;
+      if(lp.mesh){ lp.mesh.position.y=lp.baseY; lp.mesh.rotation.x=0; }
+      updateLoosePlankCollider();
+    }
+    return;
+  }
+
+  // Idle wobble (gentle) + tilt when player is on it
+  lp.wobble = Math.sin(t*1.8)*0.025;
+  if(playerOnPlank){
+    lp.dropTime += dt;
+    lp.angle = lp.wobble + Math.sin(t*4)*0.06 + lp.dropTime*0.35;
+  } else {
+    lp.dropTime = Math.max(0, lp.dropTime-dt*2);
+    lp.angle    = lp.wobble;
+  }
+
+  // Drop once player has stood on it for >1.4 s
+  if(lp.dropTime > 1.4){ lp.dropped=true; }
+
+  if(lp.mesh){ lp.mesh.position.y=lp.curY; lp.mesh.rotation.x=lp.angle; }
+  updateLoosePlankCollider();
+}
+
+buildLoosePlank();
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 6 — GROUND, ROADS, FURNITURE  (visual only)
+// ═══════════════════════════════════════════════════════════
+
+// Ground plane (player falls through to trigger respawn, not blocked)
+box(240,0.5,240,0x4e7a36,0,GROUND_Y-0.25,23);
+// Ground collider tagged isGround=true — landing on it triggers respawn, not landing.
+// Collider stays in the array; resolveCollisions simply skips physics resolution for it.
+addCollider(0,GROUND_Y-0.05,23, 240,0.5,240, false, true);
+
+// Pavement & roads (visual only — not collidable, let player walk)
+box(6,0.2,65,0xbcb0a0,0,GROUND_Y+0.1,23);
+box(130,0.22,7.5,0x404040,0,GROUND_Y+0.11,-16);
+box(130,0.22,7.5,0x404040,0,GROUND_Y+0.11,62);
+box(7.5,0.22,100,0x404040,-22,GROUND_Y+0.11,23);
+box(7.5,0.22,100,0x404040,22,GROUND_Y+0.11,23);
+for(let i=-6;i<=6;i++){
+  box(3,0.04,0.18,0xffffff,i*10,GROUND_Y+0.33,-16);
+  box(3,0.04,0.18,0xffffff,i*10,GROUND_Y+0.33,62);
+  box(0.18,0.04,3,0xffffff,-22,GROUND_Y+0.33,23+i*8);
+  box(0.18,0.04,3,0xffffff,22,GROUND_Y+0.33,23+i*8);
+}
+box(130,0.14,0.4,0xcac0b0,0,GROUND_Y+0.2,-12.5);
+box(130,0.14,0.4,0xcac0b0,0,GROUND_Y+0.2,-19.5);
+box(130,0.14,0.4,0xcac0b0,0,GROUND_Y+0.2,58.5);
+box(130,0.14,0.4,0xcac0b0,0,GROUND_Y+0.2,65.5);
+box(9,0.18,65,0x529a2e,-13.5,GROUND_Y+0.09,23);
+box(9,0.18,65,0x529a2e,13.5,GROUND_Y+0.09,23);
+
+// Zebra crossings
+function makeZebra(cx,cz,horiz){
+  for(let i=-2;i<=2;i++){
+    if(horiz) box(0.7,0.04,3,0xeeeeee,cx+i*1.05,GROUND_Y+0.33,cz);
+    else      box(3,0.04,0.7,0xeeeeee,cx,GROUND_Y+0.33,cz+i*1.05);
+  }
+}
+makeZebra(0,-12.5,false);
+makeZebra(-18,23,true);
+makeZebra(18,23,true);
+
+// ── Background houses ──
+const HWalls=[0xe8d5b0,0xd4a989,0xc8c0b0,0xf0e0c8,0xdbc9a5,0xc4b49a,0xe0c8b0,0xd8c8a0,0xcbbaa8];
+const HRoofs=[0x8b3a3a,0x6b4a2a,0x3a5a4a,0x5a3a6b,0x4a4a6b,0x7a4a2a,0x3a4a6b,0x6a3a2a,0x2a4a5a];
+const HDoors=[0x5c3a1e,0x1a3a5c,0x3a5c1e,0x5c1e3a,0x3a3a1e];
+
+function makeHouse(cx,cz,ww,wh,wd,wci,rci,dci,style){
+  const wc=HWalls[wci%HWalls.length];
+  const rc=HRoofs[rci%HRoofs.length];
+  const dc=HDoors[dci%HDoors.length];
+  box(ww,wh,wd,wc,cx,GROUND_Y+wh/2,cz);
+  if(style==='pitched'){
+    const m=new THREE.Mesh(new THREE.ConeGeometry(ww*0.72,wh*0.5,4),new THREE.MeshLambertMaterial({color:rc}));
+    m.position.set(cx,GROUND_Y+wh+wh*0.25,cz); m.rotation.y=Math.PI/4; m.castShadow=true; scene.add(m);
+  } else {
+    box(ww+0.3,0.35,wd+0.3,rc,cx,GROUND_Y+wh+0.18,cz);
+    box(ww+0.3,0.5,0.25,rc,cx,GROUND_Y+wh+0.5,cz-wd/2);
+    box(ww+0.3,0.5,0.25,rc,cx,GROUND_Y+wh+0.5,cz+wd/2);
+  }
+  box(1.1,2.0,0.16,dc,cx,GROUND_Y+1.0,cz-wd/2-0.06);
+  const winRows=Math.floor(wh/2.4);
+  for(let r=0;r<winRows;r++){
+    const wy=GROUND_Y+1.8+r*2.4;
+    box(0.95,0.85,0.15,0xaad4f5,cx-ww*0.22,wy,cz-wd/2-0.06);
+    box(0.95,0.85,0.15,0xaad4f5,cx+ww*0.22,wy,cz-wd/2-0.06);
+  }
+  if(style==='pitched') cyl(0.18,0.18,1.2,6,0xb87333,cx+ww*0.28,GROUND_Y+wh+0.5,cz+wd*0.1);
+}
+
+[[-15,-6,6.5,4.5,6,0,0,0,'pitched'],[-14,5,5.5,5.2,5.5,1,1,1,'pitched'],[-15,14,7,4.8,6,2,2,2,'flat'],
+ [-14,22,6,5.5,6,3,3,3,'pitched'],[-15,30,5.5,4.2,5,4,4,0,'pitched'],[-14,38,7,5.2,6,5,5,1,'flat'],
+ [-15,48,6,4.8,5.5,6,6,2,'pitched'],[-14,57,5.5,4.5,5,7,7,3,'pitched'],
+ [15,-4,6.5,4.8,5.5,1,2,1,'pitched'],[14,5,5.5,5.5,5,2,3,2,'pitched'],
+ [15,14,7,4.5,6,3,4,3,'flat'],[14,22,6,5.2,6,4,5,0,'pitched'],
+ [15,31,5.5,4.5,5,5,6,1,'pitched'],[14,40,7,5.2,6,6,0,2,'flat'],
+ [15,50,6,4.8,5,0,1,3,'pitched'],[14,58,5.5,4.5,5.5,2,3,4,'pitched'],
+ [-24,60,7,5,6,2,1,0,'pitched'],[-12,62,5.5,4.5,5,4,3,1,'pitched'],
+ [0,61,6,5.2,5.5,0,0,2,'flat'],[12,60,7,5,6,5,5,3,'pitched'],
+ [24,62,5.5,4.5,5,3,2,0,'pitched'],[36,61,6,5.2,5.5,1,4,1,'flat'],
+ [-24,-24,7,4.8,6,1,2,1,'pitched'],[-12,-22,5.5,5.2,5,3,4,2,'flat'],
+ [0,-24,6,4.5,5.5,5,5,3,'pitched'],[12,-23,7,5,6,6,0,0,'pitched'],
+ [24,-24,5.5,4.5,5,2,1,1,'pitched'],[36,-23,6,5.2,5.5,0,3,4,'flat'],
+].forEach(a=>makeHouse(...a));
+
+// Skyline silhouettes
+[[-65,-20,9,18],[-56,-20,6,14],[-47,-20,11,24],[-38,-20,7,12],[-29,-20,9,17],
+ [33,-20,9,21],[42,-20,7,13],[51,-20,11,25],[60,-20,8,16],[70,-20,9,20],
+ [-65,65,9,18],[-56,65,6,14],[-47,65,11,24],[-38,65,7,12],[-29,65,9,17],
+ [33,65,9,21],[42,65,7,13],[51,65,11,25],[60,65,8,16],[70,65,9,20],
+].forEach(([x,z,w,h])=>box(w,h,2.5,0x7a8fa0,x,GROUND_Y+h/2,z));
+
+// ── Street lamps ──
+function makeLamp(x,z){
+  cyl(0.07,0.09,4.8,7,0x2a2a2a,x,GROUND_Y+2.4,z);
+  box(0.9,0.07,0.07,0x2a2a2a,x+0.42,GROUND_Y+4.82,z);
+  box(0.42,0.28,0.28,0xfffacc,x+0.82,GROUND_Y+4.68,z);
+  const pl=new THREE.PointLight(0xffe090,0.7,14);
+  pl.position.set(x+0.82,GROUND_Y+4.9,z); scene.add(pl);
+}
+[-10,2,14,26,38,50].forEach(z=>{makeLamp(-8.8,z);makeLamp(8.8,z);});
+[-32,-22,-12,12,22,32].forEach(x=>{makeLamp(x,-14.5);makeLamp(x,60.5);});
+
+// ── Trees ──
+function makeTree(x,z,h){
+  cyl(0.18,0.24,h*0.42,7,0x6b3a15,x,GROUND_Y+h*0.21,z);
+  cone(h*0.42,h*0.50,7,0x2a6a2a,x,GROUND_Y+h*0.42+h*0.25,z,0.0);
+  cone(h*0.32,h*0.40,7,0x358a35,x,GROUND_Y+h*0.42+h*0.45,z,0.45);
+  cone(h*0.20,h*0.30,7,0x46a046,x,GROUND_Y+h*0.42+h*0.62,z,0.9);
+}
+[[-10,-8],[-10,4],[-10,14],[-10,24],[-10,36],[-10,48],
+ [10,-8],[10,4],[10,14],[10,24],[10,36],[10,48],
+ [-32,-14],[-22,-14],[-12,-14],[0,-14],[12,-14],[22,-14],[32,-14],
+ [-32,60],[-22,60],[-12,60],[0,60],[12,60],[22,60],[32,60],
+ [-26,-2],[-26,12],[-26,26],[-26,40],[-26,54],
+ [26,-2],[26,12],[26,26],[26,40],[26,54],
+].forEach(([x,z])=>makeTree(x,z,3.0+Math.random()*1.8));
+
+// ── Parked cars ──
+function makeCar(x,z,ry,col){
+  const g=new THREE.Group();
+  const lm=new THREE.MeshLambertMaterial({color:col});
+  const bm=new THREE.Mesh(new THREE.BoxGeometry(4.0,1.1,1.85),lm); bm.position.y=0.55; g.add(bm);
+  const cm=new THREE.Mesh(new THREE.BoxGeometry(2.3,0.95,1.7),lm);  cm.position.set(-0.15,1.5,0); g.add(cm);
+  const wm=new THREE.MeshLambertMaterial({color:0x88ccee});
+  [[-0.9,-1.17],[0.9,-1.17],[-0.9,1.17],[0.9,1.17]].forEach(([sx,sz])=>{
+    const s=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.65,1.25),wm);
+    s.position.set(-0.15+sx,1.5,sz/1.03); g.add(s);
+  });
+  const wh=new THREE.MeshLambertMaterial({color:0x1a1a1a});
+  [[-1.1,-0.92],[-1.1,0.92],[1.1,-0.92],[1.1,0.92]].forEach(([wx,wz])=>{
+    const w=new THREE.Mesh(new THREE.CylinderGeometry(0.38,0.38,0.22,10),wh);
+    w.rotation.z=Math.PI/2; w.position.set(wx,0.38,wz); g.add(w);
+  });
+  g.rotation.y=ry; g.position.set(x,GROUND_Y,z); scene.add(g);
+}
+makeCar(-18,-13,0,0xc0392b); makeCar(-18,-10,0,0x2980b9);
+makeCar(18,-13,Math.PI,0x27ae60); makeCar(18,-10,Math.PI,0xf39c12);
+makeCar(-18,59,0,0x8e44ad); makeCar(18,59,Math.PI,0xe74c3c);
+makeCar(-22,4,Math.PI/2,0x7f8c8d); makeCar(22,35,-Math.PI/2,0x1abc9c);
+makeCar(-22,30,Math.PI/2,0xf0a030); makeCar(22,10,-Math.PI/2,0xa04040);
+
+// ── Benches ──
+function makeBench(x,z,ry){
+  const g=new THREE.Group();
+  const sm=new THREE.Mesh(new THREE.BoxGeometry(2.1,0.12,0.58),new THREE.MeshLambertMaterial({color:0x8b6a3a}));
+  sm.position.y=0.52; g.add(sm);
+  const bk=new THREE.Mesh(new THREE.BoxGeometry(2.1,0.52,0.1),new THREE.MeshLambertMaterial({color:0x8b6a3a}));
+  bk.position.set(0,0.84,0.24); g.add(bk);
+  [[-0.88,-0.2],[0.88,-0.2],[-0.88,0.2],[0.88,0.2]].forEach(([lx,lz])=>{
+    const lg=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.52,0.1),new THREE.MeshLambertMaterial({color:0x444444}));
+    lg.position.set(lx,0.26,lz); g.add(lg);
+  });
+  g.rotation.y=ry; g.position.set(x,GROUND_Y,z); scene.add(g);
+}
+makeBench(-9,20,0); makeBench(9,20,Math.PI); makeBench(-9,40,0); makeBench(9,40,Math.PI);
+
+// Fences (visual)
+function makeFence(x1,z1,x2,z2){
+  const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz),ang=Math.atan2(dx,dz);
+  [0.35,0.75].forEach(f=>{
+    const rb=box(0.07,0.07,len,0xa07840,(x1+x2)/2,GROUND_Y+1.2*f+0.1,(z1+z2)/2);
+    rb.rotation.y=ang;
+  });
+  const steps=Math.max(1,Math.floor(len/1.4));
+  for(let s=0;s<=steps;s++){const t2=s/steps; box(0.09,1.25,0.09,0x8b5e3c,x1+dx*t2,GROUND_Y+0.62,z1+dz*t2);}
+}
+[[-19,-8,-11,-8],[-19,-8,-19,2],[-19,2,-11,2],[11,-8,19,-8],[19,-8,19,2],[11,2,19,2],
+ [-19,18,-11,18],[-19,28,-11,28],[11,32,19,32],[11,44,19,44],
+ [-19,44,-11,44],[-19,55,-11,55],[11,55,19,55],[11,65,19,65],
+].forEach(a=>makeFence(...a));
+
+// Postboxes
+function makePostbox(x,z){
+  box(0.42,0.85,0.42,0xcc2222,x,GROUND_Y+0.73,z);
+  box(0.48,0.14,0.48,0x991111,x,GROUND_Y+1.19,z);
+}
+makePostbox(-9,12); makePostbox(9,34); makePostbox(-9,42);
+
+// Bins
+function makeBin(x,z){
+  cyl(0.22,0.20,0.9,8,0x337733,x,GROUND_Y+0.45,z);
+  cyl(0.24,0.22,0.1,8,0x224422,x,GROUND_Y+0.95,z);
+}
+makeBin(-9.5,6); makeBin(9.5,6); makeBin(-9.5,30); makeBin(9.5,52);
+
+// Clouds
+function makeCloud(cx,cy,cz,sc){
+  const mat=new THREE.MeshLambertMaterial({color:0xffffff});
+  [[0,0,1.3],[1.2,-0.1,0.9],[-1.1,-0.2,0.85],[0.5,0.45,0.75],[-0.5,0.3,0.7]].forEach(([px,py,r])=>{
+    const m=new THREE.Mesh(new THREE.SphereGeometry(r*sc,8,6),mat);
+    m.position.set(cx+px*sc*1.6,cy+py*sc,cz); scene.add(m);
+  });
+}
+makeCloud(-42,22,-30,3.2); makeCloud(32,26,-28,2.6); makeCloud(-22,24,68,3.6);
+makeCloud(48,28,52,2.1);   makeCloud(8,27,-52,2.9);  makeCloud(62,21,22,2.3);
+makeCloud(-55,25,40,2.7);
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 7 — FLAG SPOTS & PRIDE FLAGS
+// ═══════════════════════════════════════════════════════════
+
+const flagSpotPositions=rooftopDefs.map((r,i)=>
+  new THREE.Vector3(r.x, rooftopTopY[i]+0.05, rooftopZs[i])
+);
+
+const markerMeshes=flagSpotPositions.map(pos=>{
+  const geo=new THREE.RingGeometry(0.65,1.0,36);
+  const mat=new THREE.MeshBasicMaterial({color:0xffd93d,side:THREE.DoubleSide,transparent:true,opacity:0.9});
+  const ring=new THREE.Mesh(geo,mat); ring.rotation.x=-Math.PI/2; ring.position.copy(pos); scene.add(ring);
+  return ring;
+});
+
+const PRIDE_STRIPES=[0xff0000,0xff8c00,0xffd700,0x00c000,0x0000ff,0x8b00ff];
+function createPrideFlag(position){
+  const g=new THREE.Group();
+  const pm=new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.055,3.0,8),new THREE.MeshLambertMaterial({color:0xdddddd}));
+  pm.position.y=1.5; pm.castShadow=true; g.add(pm);
+  PRIDE_STRIPES.forEach((color,i)=>{
+    const sm=new THREE.Mesh(new THREE.PlaneGeometry(1.55,0.31),new THREE.MeshLambertMaterial({color,side:THREE.DoubleSide}));
+    sm.position.set(0.78,2.72-i*0.31,0.01); g.add(sm);
+  });
+  g.position.copy(position); g.position.y+=0.05; scene.add(g);
+  g.scale.setScalar(0.01);
+  let t=0;
+  (function grow(){
+    t+=0.06;
+    g.scale.setScalar(Math.min(1,t<0.7?(t/0.7)*1.12:1.12-(t-0.7)/0.3*0.12));
+    if(t<1) requestAnimationFrame(grow); else g.scale.setScalar(1);
+  })();
+  return g;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 8 — PROCEDURAL MUSIC (Web Audio API)
+// ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+//  AUDIO ENGINE
+//  • initAudio()      — create AudioContext + shared nodes
+//  • startBgMusic()   — begin/resume looping background track
+//  • stopBgMusic()    — halt scheduler (notes already queued fade naturally)
+//  • playWinJingle()  — upbeat fanfare on win
+//  • playLoseMusic()  — gloomy descending theme on lose
+// ═══════════════════════════════════════════════════════════
+
+let audioCtx      = null;
+let musicEnabled  = true;
+let musicScheduler= null;
+let bgNextBar     = 0;
+
+// Shared nodes (set up once in initAudio)
+let bgMaster = null, bgReverb = null;
+
+function ensureAudioCtx(){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended') audioCtx.resume();
+}
+
+function initAudio(){
+  ensureAudioCtx();
+  if(bgMaster) return; // already initialised
+
+  // Master chain for background music
+  bgMaster = audioCtx.createGain();
+  bgMaster.gain.value = 0.52;
+  const comp = audioCtx.createDynamicsCompressor();
+  comp.threshold.value=-18; comp.ratio.value=4;
+  bgMaster.connect(comp); comp.connect(audioCtx.destination);
+
+  // Shared reverb for bg music
+  const rLen = audioCtx.sampleRate * 1.2;
+  const rBuf = audioCtx.createBuffer(2,rLen,audioCtx.sampleRate);
+  for(let ch=0;ch<2;ch++){
+    const d=rBuf.getChannelData(ch);
+    for(let i=0;i<rLen;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/rLen,3);
+  }
+  bgReverb = audioCtx.createConvolver(); bgReverb.buffer=rBuf;
+  const rg = audioCtx.createGain(); rg.gain.value=0.18;
+  bgReverb.connect(rg); rg.connect(bgMaster);
+}
+
+// ── Shared low-level note helpers ──
+// These use an arbitrary AudioContext + destination gain passed in.
+
+function _note(ctx,freq,startT,dur,vol,wave,dest){
+  const osc=ctx.createOscillator(), env=ctx.createGain();
+  osc.type=wave||'square';
+  osc.frequency.setValueAtTime(freq,startT);
+  env.gain.setValueAtTime(0,startT);
+  env.gain.linearRampToValueAtTime(vol,startT+0.012);
+  env.gain.setValueAtTime(vol,startT+dur*0.68);
+  env.gain.linearRampToValueAtTime(0,startT+dur);
+  osc.connect(env); env.connect(dest);
+  osc.start(startT); osc.stop(startT+dur+0.06);
+}
+
+function _kick(ctx,startT,dest){
+  const osc=ctx.createOscillator(), env=ctx.createGain();
+  osc.type='sine';
+  osc.frequency.setValueAtTime(180,startT);
+  osc.frequency.exponentialRampToValueAtTime(40,startT+0.12);
+  env.gain.setValueAtTime(0.9,startT);
+  env.gain.exponentialRampToValueAtTime(0.001,startT+0.28);
+  osc.connect(env); env.connect(dest);
+  osc.start(startT); osc.stop(startT+0.32);
+}
+
+function _hat(ctx,startT,vol,dest){
+  const buf=ctx.createBuffer(1,Math.floor(ctx.sampleRate*0.08),ctx.sampleRate);
+  const d=buf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+  const src=ctx.createBufferSource(); src.buffer=buf;
+  const filt=ctx.createBiquadFilter(); filt.type='highpass'; filt.frequency.value=8000;
+  const env=ctx.createGain();
+  env.gain.setValueAtTime(vol,startT); env.gain.exponentialRampToValueAtTime(0.001,startT+0.08);
+  src.connect(filt); filt.connect(env); env.connect(dest);
+  src.start(startT); src.stop(startT+0.1);
+}
+
+function _snare(ctx,startT,dest){
+  const buf=ctx.createBuffer(1,Math.floor(ctx.sampleRate*0.18),ctx.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,1.5);
+  const src=ctx.createBufferSource(); src.buffer=buf;
+  const filt=ctx.createBiquadFilter(); filt.type='bandpass'; filt.frequency.value=1800; filt.Q.value=0.5;
+  const env=ctx.createGain();
+  env.gain.setValueAtTime(0.55,startT); env.gain.exponentialRampToValueAtTime(0.001,startT+0.18);
+  src.connect(filt); filt.connect(env); env.connect(dest);
+  src.start(startT); src.stop(startT+0.22);
+}
+
+// ── Background music — full arrangement ──
+// BPM 108, D-major / D-minor sections.
+// 8 sections × varying bar counts = ~90 bars ≈ 80 seconds before the loop restarts.
+// The scheduler walks through a flat list of "bar descriptors" generated once,
+// then wraps back to bar 0 for a seamless loop.
+
+const BG_BPM  = 108;
+const BG_BEAT = 60 / BG_BPM;          // seconds per quarter note
+const BG_BAR  = BG_BEAT * 4;          // 4/4 bar in seconds
+const BG_HALF = BG_BEAT / 2;          // sixteenth note
+
+// Frequency tables
+const SCALE_MAJ = [146.83,164.81,185,196,220,246.94,277.18,293.66,329.63,369.99,392,440,493.88,587.33,659.25,783.99];
+// D minor scale freqs: D3 E3 F3 G3 A3 Bb3 C4 D4 E4 F4 G4 A4
+const SCALE_MIN = [146.83,164.81,174.61,196,220,233.08,261.63,293.66,329.63,349.23,392,440];
+
+// ── Section definitions ──
+// Each section has a bar count and a render function (barT, barIndex) → void
+// barIndex is the bar number within that section (0-based).
+
+const BG_SECTIONS = [
+
+  // ──────────────────────────────────────────────────
+  //  0. INTRO  (4 bars) — sparse, no drums, gentle arp
+  // ──────────────────────────────────────────────────
+  { bars:4, render(barT, bi){
+    const ctx=audioCtx;
+    const out=_bgOut(0.22,0.14,0,0);        // mel only, no drums
+    const arpNotes=[SCALE_MAJ[7],SCALE_MAJ[9],SCALE_MAJ[11],SCALE_MAJ[13]]; // D4 F#4 B4 D5
+    for(let i=0;i<8;i++){
+      _note(ctx, arpNotes[i%4], barT+i*BG_BEAT*0.5, BG_BEAT*0.4, 0.35,'triangle', out.mel);
+    }
+    // Low bass drone
+    _note(ctx, 146.83, barT, BG_BAR*0.92, 0.4,'sawtooth', out.bas);
+    // Soft pad chord
+    if(bi===0||bi===2){
+      [SCALE_MAJ[0],SCALE_MAJ[4],SCALE_MAJ[7]].forEach(f=>
+        _note(ctx,f*2,barT,BG_BAR*0.88,0.12,'triangle',out.chd));
+    }
+  }},
+
+  // ──────────────────────────────────────────────────
+  //  1. VERSE A  (8 bars) — main upbeat chiptune theme
+  // ──────────────────────────────────────────────────
+  { bars:8, render(barT, bi){
+    const ctx=audioCtx;
+    const out=_bgOut(0.28,0.44,0.13,1.0);
+    const melPat=[7,5,7,8, 5,3,5,7, 7,8,10,8, 7,5,3,2];
+    const melPat2=[9,8,7,5, 8,7,5,3, 5,7,9,8, 7,9,8,7];
+    const pat = (bi%2===0) ? melPat : melPat2;
+    pat.forEach((idx,s)=>
+      _note(ctx, SCALE_MAJ[idx]*2, barT+s*BG_HALF, BG_BEAT*0.42, 0.5,'square', out.mel)
+    );
+    const bassWalk=[[146.83,146.83,110,110],[130.81,130.81,164.81,164.81]];
+    const bw=bassWalk[bi%2];
+    for(let i=0;i<8;i++) _note(ctx,bw[Math.floor(i/2)],barT+i*BG_BEAT*0.5,BG_BEAT*0.55,0.7,'sawtooth',out.bas);
+    const chordPat=[[0,4],[2,5],[0,4],[4,7]];
+    chordPat.forEach(([a,b],ci)=>{
+      _note(ctx,SCALE_MAJ[a]*2,barT+ci*BG_BEAT,BG_BEAT*0.85,0.4,'triangle',out.chd);
+      _note(ctx,SCALE_MAJ[b]*2,barT+ci*BG_BEAT,BG_BEAT*0.85,0.4,'triangle',out.chd);
+    });
+    _drumsBeat(barT, ctx, out.drm, false);
+  }},
+
+  // ──────────────────────────────────────────────────
+  //  2. VERSE B  (8 bars) — syncopated variation
+  // ──────────────────────────────────────────────────
+  { bars:8, render(barT, bi){
+    const ctx=audioCtx;
+    const out=_bgOut(0.26,0.42,0.14,1.0);
+    // Melody offset by one sixteenth for syncopation
+    const melPat=[5,7,9,7, 8,7,5,3, 7,9,11,9, 8,7,5,7];
+    melPat.forEach((idx,s)=>
+      _note(ctx, SCALE_MAJ[idx]*2, barT+s*BG_HALF+BG_HALF*0.5, BG_BEAT*0.38, 0.48,'square', out.mel)
+    );
+    // Walking bass line
+    const bLine=[146.83,164.81,185,196,220,196,185,164.81];
+    for(let i=0;i<8;i++) _note(ctx,bLine[i%8],barT+i*BG_HALF,BG_HALF*0.85,0.65,'sawtooth',out.bas);
+    // Staccato chords on off-beats
+    [1,3,5,7].forEach(beat=>{
+      [SCALE_MAJ[4],SCALE_MAJ[7],SCALE_MAJ[9]].forEach(f=>
+        _note(ctx,f*2,barT+beat*BG_HALF,BG_HALF*0.4,0.22,'square',out.chd));
+    });
+    _drumsBeat(barT, ctx, out.drm, false);
+  }},
+
+  // ──────────────────────────────────────────────────
+  //  3. PRE-CHORUS  (4 bars) — tension build, rising bass
+  // ──────────────────────────────────────────────────
+  { bars:4, render(barT, bi){
+    const ctx=audioCtx;
+    const out=_bgOut(0.30,0.50,0.15,1.0);
+    // Rising melody sequence
+    const rising=[3,5,7,8,9,10,11,13, 8,9,10,11,12,13,14,15];
+    rising.forEach((idx,s)=>
+      _note(ctx,SCALE_MAJ[Math.min(idx,15)]*2,barT+s*BG_HALF,BG_BEAT*0.35,0.55,'square',out.mel)
+    );
+    // Climbing bass
+    const climbBass=[146.83,164.81,185,196,220,246.94,277.18,293.66];
+    for(let i=0;i<8;i++) _note(ctx,climbBass[i%8],barT+i*BG_HALF,BG_HALF*0.8,0.72,'sawtooth',out.bas);
+    // Sustained chord
+    [SCALE_MAJ[0],SCALE_MAJ[4],SCALE_MAJ[7],SCALE_MAJ[11]].forEach(f=>
+      _note(ctx,f*2,barT,BG_BAR*0.92,0.18,'triangle',out.chd));
+    _drumsBeat(barT, ctx, out.drm, true); // extra kick on beat 3
+  }},
+
+  // ──────────────────────────────────────────────────
+  //  4. CHORUS  (8 bars) — big, full, loud, high melody
+  // ──────────────────────────────────────────────────
+  { bars:8, render(barT, bi){
+    const ctx=audioCtx;
+    const out=_bgOut(0.32,0.48,0.18,1.0);
+    // High energetic melody (octave up)
+    const chorusMel=[13,11,13,14, 11,9,11,13, 13,14,15,14, 13,11,9,8];
+    const chorusMel2=[11,13,14,13,11,9,8,9, 11,9,8,7, 9,8,7,5];
+    const pat=(bi%2===0)?chorusMel:chorusMel2;
+    pat.forEach((idx,s)=>
+      _note(ctx,SCALE_MAJ[Math.min(idx,15)]*2,barT+s*BG_HALF,BG_BEAT*0.44,0.55,'square',out.mel)
+    );
+    // Punchy bass
+    const pBass=[293.66,220,293.66,369.99, 293.66,220,164.81,196];
+    for(let i=0;i<8;i++) _note(ctx,pBass[i%8]*0.5,barT+i*BG_HALF,BG_HALF*0.7,0.75,'sawtooth',out.bas);
+    // Big chord stabs every half-bar
+    const bigChords=[[SCALE_MAJ[7],SCALE_MAJ[11],SCALE_MAJ[13]],[SCALE_MAJ[5],SCALE_MAJ[9],SCALE_MAJ[11]]];
+    for(let h=0;h<8;h++){
+      bigChords[h%2].forEach(f=>
+        _note(ctx,f*2,barT+h*BG_HALF,BG_HALF*0.55,0.28,'triangle',out.chd));
+    }
+    _drumsChorus(barT, ctx, out.drm);
+  }},
+
+  // ──────────────────────────────────────────────────
+  //  5. BRIDGE  (8 bars) — D-minor, darker mood
+  // ──────────────────────────────────────────────────
+  { bars:8, render(barT, bi){
+    const ctx=audioCtx;
+    const out=_bgOut(0.25,0.44,0.14,0.85);
+    // Minor melody — descending then ascending
+    const minMelA=[7,6,5,3, 5,6,7,9, 7,5,3,2, 3,5,7,6];
+    const minMelB=[9,7,6,5, 7,6,5,3, 5,7,9,7, 6,5,3,2];
+    const pat=(bi%2===0)?minMelA:minMelB;
+    pat.forEach((idx,s)=>
+      _note(ctx,SCALE_MIN[Math.min(idx,11)]*2,barT+s*BG_HALF,BG_BEAT*0.45,0.46,'sawtooth',out.mel)
+    );
+    // Minor bass
+    const minBass=[SCALE_MIN[0],SCALE_MIN[0],SCALE_MIN[4],SCALE_MIN[4],
+                   SCALE_MIN[3],SCALE_MIN[3],SCALE_MIN[6],SCALE_MIN[6]];
+    for(let i=0;i<8;i++) _note(ctx,minBass[i],barT+i*BG_HALF,BG_HALF*0.88,0.62,'sawtooth',out.bas);
+    // Minor chords Dm/Gm/Am
+    const minChords=[
+      [SCALE_MIN[0],SCALE_MIN[2],SCALE_MIN[4]],
+      [SCALE_MIN[3],SCALE_MIN[5],SCALE_MIN[7]],
+      [SCALE_MIN[0],SCALE_MIN[2],SCALE_MIN[4]],
+      [SCALE_MIN[4],SCALE_MIN[7],SCALE_MIN[9]],
+    ];
+    minChords.forEach((ch,ci)=>{
+      ch.forEach(f=>_note(ctx,f*2,barT+ci*BG_BEAT,BG_BEAT*0.88,0.17,'triangle',out.chd));
+    });
+    _drumsBeat(barT, ctx, out.drm, false);
+  }},
+
+  // ──────────────────────────────────────────────────
+  //  6. BREAKDOWN  (4 bars) — half-time, sparse, just bass+kick
+  // ──────────────────────────────────────────────────
+  { bars:4, render(barT, bi){
+    const ctx=audioCtx;
+    const out=_bgOut(0.15,0.52,0,0.6);
+    // Sparse bass thump (half-time feel, every beat)
+    [0,1,2,3].forEach(b=>{
+      _note(ctx,146.83,barT+b*BG_BEAT,BG_BEAT*0.7,0.8,'sawtooth',out.bas);
+      _kick(ctx,barT+b*BG_BEAT,out.drm);
+    });
+    // Occasional snare on 3
+    _snare(ctx,barT+2*BG_BEAT,out.drm);
+    // Single high ping every 2 beats
+    [0,2].forEach(b=>
+      _note(ctx,SCALE_MAJ[13]*2,barT+b*BG_BEAT,BG_BEAT*0.25,0.28,'square',out.mel)
+    );
+  }},
+
+  // ──────────────────────────────────────────────────
+  //  7. OUTRO / LOOP BRIDGE  (4 bars) — back to D-major,
+  //     fades into intro feel to make loop seamless
+  // ──────────────────────────────────────────────────
+  { bars:4, render(barT, bi){
+    const ctx=audioCtx;
+    const out=_bgOut(0.24,0.38,0.10,0.7);
+    // Simple falling arpeggio — mirrors intro ascending
+    const arpNotes=[SCALE_MAJ[13],SCALE_MAJ[11],SCALE_MAJ[9],SCALE_MAJ[7],
+                    SCALE_MAJ[5], SCALE_MAJ[4], SCALE_MAJ[2], SCALE_MAJ[0]];
+    for(let i=0;i<8;i++)
+      _note(ctx,arpNotes[i%8]*2,barT+i*BG_BEAT*0.5,BG_BEAT*0.4,0.35,'triangle',out.mel);
+    _note(ctx,146.83,barT,BG_BAR*0.92,0.45,'sawtooth',out.bas);
+    [SCALE_MAJ[0],SCALE_MAJ[4],SCALE_MAJ[7]].forEach(f=>
+      _note(ctx,f*2,barT,BG_BAR*0.88,0.13,'triangle',out.chd));
+    // Light drums only on bars 3-4
+    if(bi>=2) _drumsBeat(barT,ctx,out.drm,false);
+  }},
+
+]; // end BG_SECTIONS
+
+// ── Drum pattern helpers ──
+function _drumsBeat(barT, ctx, dest, extraKick3){
+  // Standard 4/4: kick on 1&3, snare on 2&4, hats every 8th
+  for(let i=0;i<16;i++){
+    const t=barT+i*BG_HALF;
+    if(i%8===0 || (extraKick3 && i===8)) _kick(ctx,t,dest);
+    if(i===4||i===12) _snare(ctx,t,dest);
+    _hat(ctx,t,i%4===0?0.18:0.08,dest);
+  }
+}
+
+function _drumsChorus(barT, ctx, dest){
+  // Double kick on 1, kicks on all beats, extra snare rolls
+  for(let i=0;i<16;i++){
+    const t=barT+i*BG_HALF;
+    if(i===0||i===1||i===4||i===8||i===9||i===12) _kick(ctx,t,dest);
+    if(i===4||i===12||i===14) _snare(ctx,t,dest);
+    _hat(ctx,t,0.14,dest);
+  }
+}
+
+// ── Output gain bus factory ──
+// Returns { mel, bas, chd, drm } gain nodes all wired to bgMaster/bgReverb
+function _bgOut(mVol, bVol, cVol, dVol){
+  const ctx=audioCtx;
+  function bus(vol, toRev){
+    const g=ctx.createGain(); g.gain.value=vol;
+    g.connect(bgMaster);
+    if(toRev && bgReverb) g.connect(bgReverb);
+    return g;
+  }
+  return {
+    mel: bus(mVol, true),
+    bas: bus(bVol, false),
+    chd: bus(cVol, true),
+    drm: bus(dVol, false),
+  };
+}
+
+// ── Pre-compute the flat bar list ──
+// Each entry: { render fn, barIndex within section }
+// Total bars = sum of all section bar counts
+const BG_BAR_LIST = [];
+BG_SECTIONS.forEach(sec=>{
+  for(let bi=0;bi<sec.bars;bi++) BG_BAR_LIST.push({render:sec.render, bi});
+});
+const BG_TOTAL_BARS = BG_BAR_LIST.length; // 4+8+8+4+8+8+4+4 = 48 bars ≈ 106 seconds
+
+let bgBarCursor = 0; // which bar in BG_BAR_LIST to schedule next
+
+function startBgMusic(){
+  initAudio();
+  if(!musicEnabled) return;
+  clearTimeout(musicScheduler);
+  // Restore master gain in case it was silenced by stopBgMusic
+  if(bgMaster) bgMaster.gain.setValueAtTime(0.52, audioCtx.currentTime);
+  bgNextBar   = audioCtx.currentTime + 0.05;
+  bgBarCursor = 0;
+
+  (function tick(){
+    if(!musicEnabled){ musicScheduler=null; return; }
+    const now=audioCtx.currentTime;
+    // Look 0.5 s ahead and schedule any bars due in that window
+    while(bgNextBar < now + 0.5){
+      const entry = BG_BAR_LIST[bgBarCursor % BG_TOTAL_BARS];
+      entry.render(bgNextBar, entry.bi);
+      bgBarCursor++;
+      bgNextBar += BG_BAR;
+    }
+    musicScheduler=setTimeout(tick, 150);
+  })();
+}
+
+function stopBgMusic(){
+  clearTimeout(musicScheduler);
+  musicScheduler=null;
+  // Immediately silence any already-queued notes by cutting the master gain
+  if(bgMaster && audioCtx){
+    bgMaster.gain.cancelScheduledValues(audioCtx.currentTime);
+    bgMaster.gain.setValueAtTime(0, audioCtx.currentTime);
+  }
+}
+
+// ── Win jingle: ascending arpeggio → big chord → sparkle bells ──
+function playWinJingle(){
+  ensureAudioCtx();
+  const ctx=audioCtx, now=ctx.currentTime+0.05;
+
+  const out=ctx.createGain(); out.gain.value=0.72;
+  const cmp=ctx.createDynamicsCompressor(); cmp.threshold.value=-12; cmp.ratio.value=4;
+  out.connect(cmp); cmp.connect(ctx.destination);
+
+  const rLen=ctx.sampleRate*1.5;
+  const rBuf=ctx.createBuffer(2,rLen,ctx.sampleRate);
+  for(let ch=0;ch<2;ch++){const d=rBuf.getChannelData(ch);for(let i=0;i<rLen;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/rLen,2.5);}
+  const rev=ctx.createConvolver(); rev.buffer=rBuf;
+  const rg=ctx.createGain(); rg.gain.value=0.28; rev.connect(rg); rg.connect(out);
+
+  function note(freq,t,dur,vol,wave){_note(ctx,freq,t,dur,vol,wave||'square',out);_note(ctx,freq,t,dur,vol*0.3,wave||'square',rev);}
+  function bell(freq,t,dur,vol){
+    [1,2,3].forEach((m,i)=>{
+      const osc=ctx.createOscillator(),env=ctx.createGain();
+      osc.type='sine'; osc.frequency.value=freq*m;
+      env.gain.setValueAtTime(vol/(i+1),t); env.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      osc.connect(env); env.connect(out); env.connect(rev);
+      osc.start(t); osc.stop(t+dur+0.05);
+    });
+  }
+
+  // Phase 1: ascending arpeggio
+  [293.66,369.99,440,587.33,659.25,783.99].forEach((f,i)=>note(f,now+i*0.10,0.18,0.35));
+  const c0=now+6*0.10+0.06;
+  // Phase 2: full D-major chord
+  [146.83,220,293.66,369.99,440,587.33].forEach((f,i)=>note(f,c0,0.6,0.22,i<2?'sawtooth':'square'));
+  // Phase 3: sparkle cascade
+  [880,1046.5,1174.66,1318.51,1567.98].forEach((f,i)=>bell(f,c0+0.55+i*0.09,1.2,0.18));
+  // Phase 4: final bloom
+  bell(587.33,c0+1.1,2.6,0.28); bell(1174.66,c0+1.1,2.6,0.18);
+}
+
+// ── Lose music: sad descending melody + slow minor chords + muted drums ──
+function playLoseMusic(){
+  ensureAudioCtx();
+  const ctx=audioCtx, now=ctx.currentTime+0.05;
+
+  const out=ctx.createGain(); out.gain.value=0.62;
+  const cmp=ctx.createDynamicsCompressor(); cmp.threshold.value=-14; cmp.ratio.value=4;
+  out.connect(cmp); cmp.connect(ctx.destination);
+
+  // Dark reverb
+  const rLen=ctx.sampleRate*2.0;
+  const rBuf=ctx.createBuffer(2,rLen,ctx.sampleRate);
+  for(let ch=0;ch<2;ch++){const d=rBuf.getChannelData(ch);for(let i=0;i<rLen;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/rLen,1.8);}
+  const rev=ctx.createConvolver(); rev.buffer=rBuf;
+  const rg=ctx.createGain(); rg.gain.value=0.35; rev.connect(rg); rg.connect(out);
+
+  function note(freq,t,dur,vol,wave){_note(ctx,freq,t,dur,vol,wave||'square',out);_note(ctx,freq,t,dur,vol*0.4,wave||'square',rev);}
+
+  // D minor descending scale (D4→D3): D4 C4 Bb3 A3 G3 F3 E3 D3
+  const mel=[293.66,261.63,233.08,220,196,174.61,164.81,146.83];
+  const BPM=72, beat=60/BPM;  // slow and gloomy
+  const hs=beat*0.6;           // spacing between melody notes
+
+  mel.forEach((f,i)=>note(f,now+i*hs,hs*0.85,0.38,'sawtooth'));
+
+  // Slow minor chord progression: Dm → Gm → Dm → A (repeating)
+  // Dm=D3 F3 A3  Gm=G3 Bb3 D4  Am=A3 C4 E4
+  const chords=[
+    [146.83,174.61,220],      // Dm
+    [196,   233.08,293.66],   // Gm
+    [146.83,174.61,220],      // Dm
+    [220,   261.63,329.63],   // Am
+  ];
+  chords.forEach((chord,ci)=>{
+    const t=now+ci*beat*2;
+    chord.forEach(f=>note(f,t,beat*1.7,0.18,'triangle'));
+  });
+
+  // Slow muted kick + soft snare — half tempo feel
+  const dk=ctx.createGain(); dk.gain.value=0.55; dk.connect(out);
+  const ds=ctx.createGain(); ds.gain.value=0.35; ds.connect(out);
+  [0,beat*2,beat*4,beat*6].forEach(t=>_kick(ctx,now+t,dk));
+  [beat,beat*3,beat*5,beat*7].forEach(t=>_snare(ctx,now+t,ds));
+
+  // Final descending whomp — low sine sweep
+  const whomp=ctx.createOscillator(), wenv=ctx.createGain();
+  const wStart=now+mel.length*hs+0.1;
+  whomp.type='sine';
+  whomp.frequency.setValueAtTime(140,wStart);
+  whomp.frequency.exponentialRampToValueAtTime(30,wStart+1.5);
+  wenv.gain.setValueAtTime(0.6,wStart); wenv.gain.exponentialRampToValueAtTime(0.001,wStart+1.8);
+  whomp.connect(wenv); wenv.connect(out); wenv.connect(rev);
+  whomp.start(wStart); whomp.stop(wStart+2.0);
+}
+
+// ── Jump sound: a crisp upward pitch-sweep + soft thump ──
+function playJumpSound(){
+  if(!audioCtx) return;
+  if(audioCtx.state==='suspended') audioCtx.resume();
+  const ctx=audioCtx, now=ctx.currentTime;
+
+  const out=ctx.createGain(); out.gain.value=0.28;
+  out.connect(ctx.destination);
+
+  // Rising whistle sweep (square → silence)
+  const sweep=ctx.createOscillator(), senv=ctx.createGain();
+  sweep.type='square';
+  sweep.frequency.setValueAtTime(220,now);
+  sweep.frequency.exponentialRampToValueAtTime(520,now+0.12);
+  senv.gain.setValueAtTime(0.55,now);
+  senv.gain.exponentialRampToValueAtTime(0.001,now+0.13);
+  sweep.connect(senv); senv.connect(out);
+  sweep.start(now); sweep.stop(now+0.15);
+
+  // Soft body thump (low sine, very short)
+  const thump=ctx.createOscillator(), tenv=ctx.createGain();
+  thump.type='sine';
+  thump.frequency.setValueAtTime(110,now);
+  thump.frequency.exponentialRampToValueAtTime(55,now+0.06);
+  tenv.gain.setValueAtTime(0.4,now);
+  tenv.gain.exponentialRampToValueAtTime(0.001,now+0.07);
+  thump.connect(tenv); tenv.connect(out);
+  thump.start(now); thump.stop(now+0.08);
+}
+
+// ── Flag plant sound: cheerful 3-note chime ~~✨~~  ──
+function playFlagSound(){
+  if(!audioCtx) return;
+  if(audioCtx.state==='suspended') audioCtx.resume();
+  const ctx=audioCtx, now=ctx.currentTime;
+
+  const out=ctx.createGain(); out.gain.value=0.42;
+  out.connect(ctx.destination);
+
+  // Short reverb tail for the chime
+  const rLen=Math.floor(ctx.sampleRate*0.6);
+  const rBuf=ctx.createBuffer(1,rLen,ctx.sampleRate);
+  const rd=rBuf.getChannelData(0);
+  for(let i=0;i<rLen;i++) rd[i]=(Math.random()*2-1)*Math.pow(1-i/rLen,3);
+  const rev=ctx.createConvolver(); rev.buffer=rBuf;
+  const rg=ctx.createGain(); rg.gain.value=0.22; rev.connect(rg); rg.connect(out);
+
+  // Three ascending bell tones (D4 → F#4 → A4) — D major triad
+  const chimeFreqs=[293.66, 369.99, 440];
+  chimeFreqs.forEach((freq,i)=>{
+    const t=now+i*0.10;
+    // Main sine tone
+    const osc=ctx.createOscillator(), env=ctx.createGain();
+    osc.type='sine';
+    osc.frequency.setValueAtTime(freq,t);
+    env.gain.setValueAtTime(0.5,t);
+    env.gain.exponentialRampToValueAtTime(0.001,t+0.55);
+    osc.connect(env); env.connect(out); env.connect(rev);
+    osc.start(t); osc.stop(t+0.6);
+
+    // Bright harmonic overtone (×3 freq) for sparkle
+    const osc2=ctx.createOscillator(), env2=ctx.createGain();
+    osc2.type='sine';
+    osc2.frequency.setValueAtTime(freq*3,t);
+    env2.gain.setValueAtTime(0.15,t);
+    env2.gain.exponentialRampToValueAtTime(0.001,t+0.25);
+    osc2.connect(env2); env2.connect(out);
+    osc2.start(t); osc2.stop(t+0.28);
+  });
+
+  // Final high ping on D5 for extra sparkle
+  const ping=ctx.createOscillator(), penv=ctx.createGain();
+  ping.type='sine';
+  ping.frequency.value=587.33;
+  penv.gain.setValueAtTime(0.3,now+0.32);
+  penv.gain.exponentialRampToValueAtTime(0.001,now+0.85);
+  ping.connect(penv); penv.connect(out); penv.connect(rev);
+  ping.start(now+0.32); ping.stop(now+0.9);
+}
+
+// ── Music toggle button ──
+const musicBtn=document.getElementById('music-btn');
+musicBtn.addEventListener('click',()=>{
+  ensureAudioCtx(); initAudio();
+  musicEnabled=!musicEnabled;
+  if(musicEnabled){
+    musicBtn.textContent='🎵 Music: ON';
+    if(gameState.running) startBgMusic();
+  } else {
+    musicBtn.textContent='🔇 Music: OFF';
+    stopBgMusic();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 9 — PLAYER
+// ═══════════════════════════════════════════════════════════
+
+const player={
+  pos: new THREE.Vector3(0, rooftopTopY[0]+PLAYER_H+0.05, 0),
+  vel: new THREE.Vector3(),
+  yaw:0, pitch:0, onGround:false,
+  speed:7, jumpForce:9.5,
+};
+
+const keys={};
+document.addEventListener('keydown',e=>{ keys[e.code]=true; });
+document.addEventListener('keyup',  e=>{ keys[e.code]=false; });
+
+document.addEventListener('mousemove',e=>{
+  if(!gameState.running||!gameState.pointerLocked) return;
+  player.yaw  -=e.movementX*0.0018;
+  player.pitch-=e.movementY*0.0018;
+  player.pitch=Math.max(-1.35,Math.min(1.35,player.pitch));
+});
+
+renderer.domElement.addEventListener('click',()=>{
+  if(gameState.running) renderer.domElement.requestPointerLock();
+});
+document.addEventListener('pointerlockchange',()=>{
+  gameState.pointerLocked=document.pointerLockElement===renderer.domElement;
+});
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 10 — GAME STATE
+// ═══════════════════════════════════════════════════════════
+
+const gameState={
+  running:false, pointerLocked:false,
+  flagsPlanted:0, rooftopCompleted:[false,false,false],
+  timeLeft:60,
+};
+
+const SPAWN=new THREE.Vector3(0, rooftopTopY[0]+PLAYER_H+0.05, 0);
+function resetPlayer(){ player.pos.copy(SPAWN); player.vel.set(0,0,0); }
+
+const flagGroups=[null,null,null];
+
+function startGame(){
+  ['start-screen','win-screen','lose-screen'].forEach(id=>
+    document.getElementById(id).style.display='none');
+  gameState.flagsPlanted=0;
+  gameState.rooftopCompleted=[false,false,false];
+  gameState.timeLeft=60;
+  gameState.running=true;
+  rooftopMeshes.forEach(m=>m.material.color.set(ROOFTOP_GRAY));
+  flagGroups.forEach((g,i)=>{if(g){scene.remove(g);flagGroups[i]=null;}});
+  markerMeshes.forEach(m=>{m.visible=true;});
+  buildLoosePlank();
+  resetPlayer(); updateHUD();
+  renderer.domElement.requestPointerLock();
+  // Start background music fresh each game (stopBgMusic was called on endGame)
+  startBgMusic();
+}
+
+function endGame(won){
+  gameState.running=false; document.exitPointerLock();
+  document.getElementById(won?'win-screen':'lose-screen').style.display='flex';
+  stopBgMusic();
+  if(won) playWinJingle();
+  else    playLoseMusic();
+}
+
+const timerDisplay=document.getElementById('timer-display');
+const flagCountEl=document.getElementById('flag-count');
+const timerPill=document.getElementById('timer-pill');
+const promptEl=document.getElementById('prompt');
+const plankWarnEl=document.getElementById('plank-warn');
+
+function updateHUD(){
+  flagCountEl.textContent=gameState.flagsPlanted;
+  const t=Math.ceil(gameState.timeLeft);
+  timerDisplay.textContent=t;
+  timerPill.classList.toggle('urgent',t<=10);
+}
+
+const PLANT_RADIUS=2.5;
+document.addEventListener('keydown',e=>{
+  if(e.code!=='KeyE'||!gameState.running) return;
+  for(let i=0;i<3;i++){
+    if(!gameState.rooftopCompleted[i]&&player.pos.distanceTo(flagSpotPositions[i])<PLANT_RADIUS){
+      plantFlag(i); break;
+    }
+  }
+});
+
+function plantFlag(i){
+  gameState.rooftopCompleted[i]=true; gameState.flagsPlanted++;
+  flagGroups[i]=createPrideFlag(flagSpotPositions[i].clone());
+  rooftopMeshes[i].material.color.set(ACCENT_COLORS[i]);
+  markerMeshes[i].visible=false;
+  playFlagSound();
+  updateHUD();
+  if(gameState.flagsPlanted===3) setTimeout(()=>endGame(true),700);
+}
+
+function checkFlagPrompt(){
+  let near=false;
+  for(let i=0;i<3;i++){
+    if(!gameState.rooftopCompleted[i]&&player.pos.distanceTo(flagSpotPositions[i])<PLANT_RADIUS){near=true;break;}
+  }
+  promptEl.style.display=near?'block':'none';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 11 — PHYSICS & MOVEMENT (uses new AABB system)
+// ═══════════════════════════════════════════════════════════
+
+const GRAVITY=-22, FALL_RESET_Y=-14;
+
+function updatePlayer(dt){
+  if(!gameState.running) return;
+
+  // Build movement from keys
+  const move=new THREE.Vector3();
+  if(keys['KeyW']) move.z-=1;
+  if(keys['KeyS']) move.z+=1;
+  if(keys['KeyA']) move.x-=1;
+  if(keys['KeyD']) move.x+=1;
+  move.normalize();
+  move.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),player.yaw));
+
+  player.vel.x=move.x*player.speed;
+  player.vel.z=move.z*player.speed;
+  player.vel.y+=GRAVITY*dt;
+
+  // Integrate
+  player.pos.addScaledVector(player.vel, dt);
+
+  // Resolve collisions
+  const res=resolveCollisions(player.pos, player.vel);
+  player.onGround=res.onGround;
+
+  // Ground-plane contact → respawn immediately at rooftop 1
+  if(res.hitGroundPlane || player.pos.y<FALL_RESET_Y){ resetPlayer(); return; }
+
+  // Jump
+  if(keys['Space']&&player.onGround){
+    player.vel.y=player.jumpForce;
+    player.onGround=false;
+    playJumpSound();
+  }
+
+  camera.position.copy(player.pos);
+  camera.rotation.order='YXZ';
+  camera.rotation.y=player.yaw;
+  camera.rotation.x=player.pitch;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 12 — RENDER LOOP
+// ═══════════════════════════════════════════════════════════
+
+let lastTime=0;
+function animate(now){
+  requestAnimationFrame(animate);
+  const t=now/1000, dt=Math.min(t-lastTime,0.05);
+  lastTime=t;
+
+  if(gameState.running){
+    gameState.timeLeft-=dt;
+    if(gameState.timeLeft<=0){gameState.timeLeft=0;updateHUD();endGame(false);return;}
+    updateHUD();
+  }
+
+  // Marker pulse
+  markerMeshes.forEach((ring,i)=>{
+    if(!gameState.rooftopCompleted[i]){
+      ring.material.opacity=0.45+0.55*Math.sin(t*3+i*2);
+      ring.scale.setScalar(1+0.08*Math.sin(t*2.3+i));
+    }
+  });
+
+  // Loose plank logic
+  const p=player.pos;
+  const lp=loosePlankState;
+  const onLoosePlank=(
+    p.x>LOOSE_PLANK_CX-LOOSE_PLANK_W/2-PLAYER_R &&
+    p.x<LOOSE_PLANK_CX+LOOSE_PLANK_W/2+PLAYER_R &&
+    p.z>LOOSE_PLANK_CZ-LOOSE_PLANK_LEN/2 &&
+    p.z<LOOSE_PLANK_CZ+LOOSE_PLANK_LEN/2 &&
+    Math.abs((p.y-PLAYER_H) - lp.curY) < 0.35
+  );
+  updateLoosePlank(dt, t, onLoosePlank);
+
+  // Warning flash when on loose plank
+  plankWarnEl.style.display=(onLoosePlank&&!lp.dropped)?'block':'none';
+
+  updatePlayer(dt);
+  checkFlagPrompt();
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(animate);
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION 13 — RESIZE & BUTTONS
+// ═══════════════════════════════════════════════════════════
+
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+document.getElementById('start-btn').addEventListener('click',startGame);
+document.getElementById('win-restart-btn').addEventListener('click',startGame);
+document.getElementById('lose-restart-btn').addEventListener('click',startGame);
+
+// Pre-game camera
+camera.position.set(-8,rooftopTopY[0]+PLAYER_H+2,10);
+camera.rotation.order='YXZ'; camera.rotation.y=-0.25; camera.rotation.x=-0.12;
+</script>
+</body>
+</html>
